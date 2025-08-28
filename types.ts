@@ -16,6 +16,7 @@ export interface ChamberSlot {
   isSpent: boolean;
   isHidden: boolean;
   isEjecting?: boolean;
+  isFastEjecting?: boolean;
 }
 
 export type GameState = 'loading' | 'spinning' | 'ready' | 'fired';

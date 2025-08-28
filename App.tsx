@@ -166,21 +166,34 @@ const BulletInfoOverlay: React.FC<{
     onClose: () => void;
 }> = ({ bullet, isOpen, onClose }) => {
     const [isClosing, setIsClosing] = useState(false);
+    const [shouldRender, setShouldRender] = useState(false);
 
     useEffect(() => {
-        if (isOpen) setIsClosing(false);
+        if (isOpen) {
+            setIsClosing(false);
+            setShouldRender(true);
+        }
     }, [isOpen]);
 
-    const handleClose = () => setIsClosing(true);
-    const handleAnimationEnd = () => { if (isClosing) onClose(); };
+    const handleClose = () => {
+        setIsClosing(true);
+    };
     
-    if (!isOpen && !isClosing) return null;
+    const handleAnimationEnd = () => { 
+        if (isClosing) {
+            setShouldRender(false);
+            onClose();
+        }
+    };
+    
+    if (!shouldRender) return null;
 
     return (
         <div 
             className={`fixed inset-0 bg-black/80 backdrop-blur-xl z-[9999] flex items-center justify-center ${isClosing ? 'animate-result-fade-out' : 'animate-result-fade-in'}`}
             onClick={handleClose}
             onAnimationEnd={handleAnimationEnd}
+            style={{ pointerEvents: isClosing ? 'none' : 'auto' }}
         >
             <div className="bg-black/50 border border-white/10 rounded-3xl p-12 shadow-2xl text-center max-w-4xl" onClick={(e) => e.stopPropagation()}>
                 <h2 className="text-9xl font-bold mb-6 text-white font-['Orbitron'] break-words" style={{ textShadow: `0 0 30px ${bullet?.color}`}}>
@@ -234,8 +247,8 @@ const InfoModal: React.FC<{ isOpen: boolean; onClose: () => void; }> = ({ isOpen
                     <ul>
                         <li><strong className="text-white">Hotkey Loading:</strong> Hover your mouse over a palette bullet and press a number key (<kbd>1</kbd>-<kbd>6</kbd>) to load it directly into that chamber slot.</li>
                         <li><strong className="text-white">Infinite Spin:</strong> <kbd>Ctrl</kbd> + Click the center hub for an infinite, high-speed spin. Click again to stop.</li>
-                        <li><strong className="text-white">Conceal/Reveal:</strong> Click on a loaded, live (non-dud) bullet in the chamber to hide or reveal its color.</li>
-                        <li><strong className="text-white">Eject/Refill:</strong> Click on a spent casing to eject it. You can also load a new bullet directly into a spent slot to replace it.</li>
+                        <li><strong className="text-white">Conceal/Reveal:</strong> Click on a loaded, non-fired bullet in the chamber to hide or reveal its casing.</li>
+                        <li><strong className="text-white">Eject/Refill:</strong> Click a fired bullet to return it to the palette. To eject a non-fired bullet, <kbd>Alt</kbd>+Click it. Loading a bullet into a spent slot will automatically replace the casing.</li>
                     </ul>
 
                     <h3>UI &amp; Presets</h3>
@@ -298,6 +311,9 @@ export default function App() {
     const [isCounterVisible, setIsCounterVisible] = useState(true);
     const [ejectedCasing, setEjectedCasing] = useState<{ id: number, color: string, side: 'left' | 'right' } | null>(null);
     const [smokeParticles, setSmokeParticles] = useState<Particle[]>([]);
+    const [sustainedMaxHeat, setSustainedMaxHeat] = useState(false);
+    const [maxHeatStartTime, setMaxHeatStartTime] = useState<number | null>(null);
+    const maxHeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // --- Bullet Naming Feature State ---
     const [isNamingEnabled, setIsNamingEnabled] = useState(false);
@@ -317,8 +333,8 @@ export default function App() {
     const hasLoadedOnce = useRef(false);
     const prevRotationRef = useRef(0);
     const chamberContainerRef = useRef<HTMLDivElement>(null);
-    const accumulatedSpins = useRef(0);
     const smokeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const resetSpinCountTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
     const slotsRef = useRef(slots);
@@ -514,7 +530,7 @@ export default function App() {
             const firedBulletData = targetSlot.bullet;
             setFiredBullet(firedBulletData);
             
-            if (firedBulletData.name && firedBulletData.message) {
+            if (isNamingEnabled && firedBulletData.name && firedBulletData.message) {
                 setIsInfoOverlayOpen(true);
             }
             
@@ -555,7 +571,7 @@ export default function App() {
             setGameState(remainingLiveRounds ? 'ready' : 'loading');
         }, 1000);
 
-    }, [gameState, rotation, playAudio, isResetting, isFiring]);
+    }, [gameState, rotation, playAudio, isResetting, isFiring, isNamingEnabled]);
 
     const spinChamber = useCallback(() => {
         if (isInfiniteSpin) {
@@ -581,8 +597,9 @@ export default function App() {
             setRotation(finalRotation);
             
             setTimeout(() => {
-                setTotalSpinCount(c => c + accumulatedSpins.current);
-                accumulatedSpins.current = 0;
+                if (spinCount > 0) {
+                    setTotalSpinCount(prevTotal => prevTotal + spinCount);
+                }
                 setIsStopping(false);
                 if (spinWasIntentional.current) {
                     spinWasIntentional.current = false; 
@@ -590,32 +607,14 @@ export default function App() {
                 } else {
                     setGameState('ready');
                 }
+                
+                if (resetSpinCountTimeoutRef.current) clearTimeout(resetSpinCountTimeoutRef.current);
+                resetSpinCountTimeoutRef.current = setTimeout(() => {
+                    setSpinCount(0);
+                }, 1500);
             }, 400);
         }
-    }, [manageLoop, playAudio, handleFire, isInfiniteSpin, rotation]);
-
-    const startSpin = useCallback(() => {
-        if (isSpinning && !isInfiniteSpin) {
-            spinVelocity.current += (15 * Math.sign(spinVelocity.current || 1));
-            return;
-        }
-        if (isSpinning) return;
-
-        accumulatedSpins.current = 0;
-        
-        clickCount.current++;
-        if (clickTimer.current) clearTimeout(clickTimer.current);
-        clickTimer.current = setTimeout(() => {
-            const v = [1, 2].includes(clickCount.current) ? (15 * clickCount.current + Math.random() * 10 * clickCount.current) : (45 + Math.random() * 20);
-            spinVelocity.current = v * (Math.random() > 0.5 ? 1 : -1);
-            setIsSpinning(true);
-            playAudio('spin-start');
-            manageLoop('play');
-            setGameState('spinning');
-            spinWasIntentional.current = true;
-            clickCount.current = 0;
-        }, 250);
-    }, [isSpinning, playAudio, manageLoop, isInfiniteSpin]);
+    }, [manageLoop, playAudio, handleFire, isInfiniteSpin, rotation, spinCount]);
 
     const handleReset = useCallback(() => {
         if (isResetting) return;
@@ -684,8 +683,26 @@ export default function App() {
     }, [isSpinning, visualSpinSpeed]);
     
     useEffect(() => {
-        const SMOKE_THRESHOLD = 35; 
-        const smokeShouldBeActive = visualSpinSpeed > SMOKE_THRESHOLD && isSpinning;
+        const MAX_VISUAL_SPIN_VELOCITY = 75;
+        const currentHeat = Math.min(visualSpinSpeed / MAX_VISUAL_SPIN_VELOCITY, 1);
+        const isAtMaxHeat = currentHeat >= 0.95; // Near max heat
+        
+        if (isAtMaxHeat && isSpinning) {
+            if (!maxHeatStartTime) {
+                setMaxHeatStartTime(Date.now());
+            } else if (Date.now() - maxHeatStartTime >= 2000 && !sustainedMaxHeat) {
+                setSustainedMaxHeat(true);
+            }
+        } else {
+            setMaxHeatStartTime(null);
+            setSustainedMaxHeat(false);
+            if (maxHeatTimerRef.current) {
+                clearTimeout(maxHeatTimerRef.current);
+                maxHeatTimerRef.current = null;
+            }
+        }
+
+        const smokeShouldBeActive = sustainedMaxHeat && isSpinning;
 
         if (smokeShouldBeActive && !smokeIntervalRef.current) {
             smokeIntervalRef.current = setInterval(() => {
@@ -705,16 +722,18 @@ export default function App() {
                 setTimeout(() => {
                     setSmokeParticles(prev => prev.filter(p => p.id !== particleId));
                 }, 2500);
-            }, 150);
+            }, 120);
         } else if (!smokeShouldBeActive && smokeIntervalRef.current) {
             clearInterval(smokeIntervalRef.current);
             smokeIntervalRef.current = null;
+            setTimeout(() => setSmokeParticles([]), 1000);
         }
 
         return () => {
             if (smokeIntervalRef.current) clearInterval(smokeIntervalRef.current);
+            if (maxHeatTimerRef.current) clearTimeout(maxHeatTimerRef.current);
         };
-    }, [visualSpinSpeed, isSpinning]);
+    }, [visualSpinSpeed, isSpinning, sustainedMaxHeat, maxHeatStartTime]);
 
 
     useEffect(() => {
@@ -786,7 +805,10 @@ export default function App() {
         dragStartInfo.current = null;
         
         if (Math.abs(spinVelocity.current) > 5) {
-            accumulatedSpins.current = 0;
+            if (!isSpinning) {
+                if (resetSpinCountTimeoutRef.current) clearTimeout(resetSpinCountTimeoutRef.current);
+                setSpinCount(0);
+            }
             setIsSpinning(true);
             playAudio('spin-start');
             manageLoop('play');
@@ -813,7 +835,8 @@ export default function App() {
             setIsInfiniteSpin(true);
             const velocity = (60 + Math.random() * 20) * (spinVelocity.current !== 0 ? Math.sign(spinVelocity.current) : (Math.random() > 0.5 ? 1 : -1));
             if (!isSpinning) {
-                accumulatedSpins.current = 0;
+                if (resetSpinCountTimeoutRef.current) clearTimeout(resetSpinCountTimeoutRef.current);
+                setSpinCount(0);
                 spinVelocity.current = velocity;
                 setIsSpinning(true);
                 playAudio('spin-start');
@@ -825,26 +848,76 @@ export default function App() {
             spinWasIntentional.current = false;
             return;
         }
-        startSpin();
-    }
+        
+        clickCount.current++;
+        if (clickTimer.current) clearTimeout(clickTimer.current);
+        
+        if (!isSpinning) {
+            if (resetSpinCountTimeoutRef.current) clearTimeout(resetSpinCountTimeoutRef.current);
+            setSpinCount(0);
+            const baseVelocity = clickCount.current === 1 ? 15 : (15 * Math.min(clickCount.current, 3));
+            const velocity = baseVelocity + Math.random() * 10;
+            spinVelocity.current = velocity * (Math.random() > 0.5 ? 1 : -1);
+            setIsSpinning(true);
+            playAudio('spin-start');
+            manageLoop('play');
+            setGameState('spinning');
+            spinWasIntentional.current = true;
+            
+            setTimeout(() => { clickCount.current = 0; }, 100);
+        } else {
+            spinVelocity.current += (15 * Math.sign(spinVelocity.current || 1));
+        }
+    };
+
+    const ejectBullet = useCallback((targetSlot: ChamberSlot, isFast: boolean) => {
+        if (!targetSlot.bullet) return;
+
+        // Return bullet to palette by removing its ID from the loaded list
+        if (targetSlot.bullet.originalId && targetSlot.bullet.originalId > 0) {
+            setLoadedBulletOriginalIds(prev => prev.filter(id => id !== targetSlot.bullet!.originalId));
+        }
+        
+        setSlots(prev => prev.map(s => 
+            s.id === targetSlot.id ? { ...s, isEjecting: true, isFastEjecting: isFast } : s
+        ));
+        playAudio('click');
+        
+        setTimeout(() => {
+            setSlots(prev => prev.map(s => (s.id === targetSlot.id ? initialSlots[s.id] : s)));
+        }, isFast ? 200 : 600);
+    }, [playAudio, initialSlots]);
     
     const handleSlotClick = (e: React.MouseEvent, slot: ChamberSlot) => {
         if (isSpinning) return;
         e.stopPropagation();
 
         if (slot.bullet) {
-            if (slot.isSpent && !slot.bullet.isDud) {
-                setSlots(prev => prev.map(s => s.id === slot.id ? {...s, isEjecting: true} : s));
-                playAudio('click');
-                setTimeout(() => {
-                    setSlots(prev => prev.map(s => (s.id === slot.id ? initialSlots[s.id] : s)));
-                }, 600);
-            } else if (!slot.bullet.isDud) {
+            // Alt+Click ejects ANY bullet (live, dud, spent) FAST.
+            if (e.altKey) {
+                ejectBullet(slot, true);
+                return;
+            }
+
+            // Click on a Dud toggles its cover.
+            if (slot.bullet.isDud) {
                 setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, isHidden: !s.isHidden } : s));
                 playAudio('click');
+                return;
             }
-        } 
-        else if (e.altKey) {
+            
+            // Click on a spent (non-dud) bullet ejects it.
+            if (slot.isSpent) {
+                ejectBullet(slot, false); // Normal speed eject
+                return;
+            }
+
+            // Click on any other non-spent bullet toggles cover.
+            setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, isHidden: !s.isHidden } : s));
+            playAudio('click');
+
+        } else if (e.altKey) {
+            // Alt+click on an empty slot toggles numbers.
             setShowSlotNumbers(prev => !prev);
         }
     };
@@ -877,12 +950,21 @@ export default function App() {
         const prevRot = prevRotationRef.current;
         const currRot = rotation;
         if (isSpinning) {
-            if (Math.sign(prevRot) === Math.sign(currRot)) {
-                const passes = Math.floor(Math.abs(currRot) / 360) - Math.floor(Math.abs(prevRot) / 360);
-                if (passes > 0) {
-                    accumulatedSpins.current += passes;
-                    setSpinCount(c => c + passes);
+            // Use Math.abs to make counting direction-agnostic
+            const prevPasses = Math.floor(Math.abs(prevRot) / 360);
+            const currentPasses = Math.floor(Math.abs(currRot) / 360);
+            
+            // This logic handles boundary crossing in both directions
+            if (Math.sign(prevRot) === Math.sign(currRot) || Math.abs(currRot) < 180) {
+                 const passesDelta = currentPasses - prevPasses;
+                 if (passesDelta !== 0) {
+                    const spinsToAdd = Math.abs(passesDelta);
+                    setSpinCount(c => c + spinsToAdd);
                 }
+            } else { // Handle crossing the 0/360 line from opposite signs
+                 if (Math.abs(prevRot % 360) > 350 && Math.abs(currRot % 360) < 10) {
+                     setSpinCount(c => c + 1);
+                 }
             }
         }
 
@@ -975,7 +1057,8 @@ export default function App() {
                 setGameState('ready');
                 setTimeout(() => setSlots(prev => prev.map(s => s.bullet ? { ...s, isHidden: true } : s)), 1500);
                 setTimeout(() => { 
-                    accumulatedSpins.current = 0;
+                    if (resetSpinCountTimeoutRef.current) clearTimeout(resetSpinCountTimeoutRef.current);
+                    setSpinCount(0);
                     spinVelocity.current = 10 + Math.random() * 5;
                     setIsSpinning(true);
                     playAudio('spin-start');
@@ -1068,9 +1151,9 @@ export default function App() {
         const savedName = bullet.originalId ? bulletNames[bullet.originalId]?.name : null;
         if (savedName) return savedName;
         if (bullet.isCustom) return "Custom Bullet";
-        const colorName = BULLET_PALETTE_COLORS.find(c => c.color === bullet.color)?.id;
+        const colorData = BULLET_PALETTE_COLORS.find(c => c.color === bullet.color);
         const names = ["Fiery Rose", "Aqua Splash", "Electric Violet", "Goldenrod", "Pink Glamour", "Emerald Green"];
-        return colorName ? `${names[colorName - 1]}` : "Bullet";
+        return colorData ? `${names[colorData.id - 1]}` : "Bullet";
     };
 
     const MAX_VISUAL_SPIN_VELOCITY = 75;
@@ -1121,10 +1204,20 @@ export default function App() {
                         
                         <div className="flex flex-col items-center gap-2">
                             <div className="flex items-center gap-2 text-sm text-gray-300">
-                                <label htmlFor="name-toggle">Name:</label>
-                                <div className="toggle-switch">
-                                    <input type="checkbox" id="name-toggle" checked={isNamingEnabled} onChange={() => setIsNamingEnabled(p => !p)} />
-                                    <span className="toggle-slider"></span>
+                                <div className="flex items-center gap-2">
+                                    <input 
+                                        type="checkbox" 
+                                        id="name-toggle" 
+                                        checked={isNamingEnabled} 
+                                        onChange={() => setIsNamingEnabled(p => !p)}
+                                        className="w-4 h-4 rounded border-gray-300 text-[#08d9d6] focus:ring-[#08d9d6]"
+                                    />
+                                    <label 
+                                        htmlFor="name-toggle" 
+                                        className={`cursor-pointer transition-colors ${isNamingEnabled ? 'text-[#08d9d6] font-semibold' : 'text-gray-400'}`}
+                                    >
+                                        Name
+                                    </label>
                                 </div>
                             </div>
                             <div className="flex items-center gap-4">
@@ -1142,8 +1235,17 @@ export default function App() {
             <div className="relative w-[450px] h-[450px] mt-[2vh] flex items-center justify-center flex-col">
                 <div className="relative w-full h-full flex items-center justify-center">
                     {isHolsterVisible && <RevolverFrame />}
-                    <div className="absolute inset-0 pointer-events-none z-[101]">
-                        {smokeParticles.map(p => <div key={p.id} className="smoke-particle" style={p.style} />)}
+                    <div className="absolute inset-0 pointer-events-none z-[105]">
+                        {smokeParticles.map(p => (
+                            <div 
+                                key={p.id} 
+                                className="smoke-particle" 
+                                style={{
+                                    ...p.style,
+                                    zIndex: 106
+                                }} 
+                            />
+                        ))}
                     </div>
                     <div className="absolute top-1/2 left-1/2 w-px h-px pointer-events-none z-[102]">
                         {explosionParticles.map(p => <div key={p.id} className="absolute animate-explosion-particle" style={p.style} />)}
@@ -1160,9 +1262,11 @@ export default function App() {
                                 {slots.map((slot, i) => {
                                     const loadingInfo = loadingSlots.find(l => l.slotId === slot.id);
                                     const bulletToRender = loadingInfo?.bullet || slot.bullet;
+                                    const isEjecting = !!slot.isEjecting;
+                                    const isFastEjecting = !!slot.isFastEjecting;
                                     return (
                                         <div key={slot.id} style={{ '--slot-index': i, '--rotation': `${-rotation}deg`, '--bullet-glow': draggedBullet?.color, ...(bulletToRender && {'--color': bulletToRender.color}) } as React.CSSProperties} className={`chamber-slot ${dragOverSlotId === slot.id ? 'drag-over' : ''} ${invalidDropSlotId === slot.id ? 'invalid-drop' : ''}`} onClick={(e) => handleSlotClick(e, slot)} onDragOver={(e) => {e.preventDefault(); setDragOverSlotId(slot.id);}} onDragEnter={() => setDragOverSlotId(slot.id)} onDragLeave={() => setDragOverSlotId(null)} onDrop={(e) => { e.preventDefault(); setDragOverSlotId(null); setIsDraggingBullet(false); if(e.dataTransfer.getData('application/json')) { prepareToLoadBullet(slot.id, JSON.parse(e.dataTransfer.getData('application/json'))); } }}>
-                                            {bulletToRender && <div className={`chamber-bullet ${loadingInfo && 'loading'} ${slot.isEjecting && 'ejecting'} ${bulletToRender && 'loaded'} ${slot.isRevealed && !bulletToRender?.isDud && 'revealed'} ${slot.id === activeSlotIndex && 'active'} ${slot.isSpent && 'spent'} ${bulletToRender?.isDud && 'dud-casing'} ${slot.isHidden && 'is-hidden'}`} ><div className="chamber-bullet-cover" /></div>}
+                                            {bulletToRender && <div className={`chamber-bullet ${loadingInfo && 'loading'} ${isEjecting && 'ejecting'} ${isFastEjecting && 'fast'} ${bulletToRender && 'loaded'} ${slot.isRevealed && !bulletToRender?.isDud && 'revealed'} ${slot.id === activeSlotIndex && 'active'} ${slot.isSpent && 'spent'} ${bulletToRender?.isDud && 'dud-casing'} ${slot.isHidden && 'is-hidden'}`} ><div className="chamber-bullet-cover" /></div>}
                                             {!bulletToRender && showSlotNumbers && <div className="absolute text-2xl font-bold font-['Orbitron'] chamber-slot-number" style={{ color: RAINBOW_COLORS[i], textShadow: `0 0 8px ${RAINBOW_COLORS[i]}` }}>{i + 1}</div>}
                                         </div>
                                     );
@@ -1178,7 +1282,12 @@ export default function App() {
                     title="Alt+Click to toggle visibility"
                 >
                     {isCounterVisible ? (
-                        <>Spins: <span className="text-white font-bold">{spinCount}</span> / <span className="text-gray-300">{totalSpinCount}</span></>
+                        <>
+                            Spins: <span className="text-white font-bold">{spinCount}</span> 
+                            {totalSpinCount > 0 && (
+                                <> / <span className="text-gray-300">{totalSpinCount}</span></>
+                            )}
+                        </>
                     ) : (
                         <div className="w-8 h-px bg-red-500" style={{boxShadow: '0 0 8px #ff2e63, 0 0 4px #fff'}} />
                     )}

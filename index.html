@@ -211,7 +211,6 @@
                 radial-gradient(circle at center, #2a2a2a 0%, #1a1a1a 60%, #0a0a0a 100%);
         }
 
-
         .chamber-center {
             position: absolute;
             width: 100px;
@@ -329,6 +328,10 @@
         
         .chamber-bullet.ejecting {
             animation: ejectEffect 0.6s ease-in forwards;
+        }
+        
+        .chamber-bullet.ejecting.fast {
+            animation-duration: 0.2s;
         }
 
         /* CASING (now colored) */
@@ -448,18 +451,20 @@
             border: 2px solid #555;
         }
 
-        /* --- Toggle Switch --- */
+        /* --- FIXED: Enhanced Toggle Switch Styling --- */
         .toggle-switch {
             position: relative;
             display: inline-block;
-            width: 40px;
-            height: 22px;
+            width: 50px;
+            height: 26px;
         }
+
         .toggle-switch input {
             opacity: 0;
             width: 0;
             height: 0;
         }
+
         .toggle-slider {
             position: absolute;
             cursor: pointer;
@@ -467,26 +472,62 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: #333;
-            transition: .4s;
-            border-radius: 22px;
+            background: linear-gradient(135deg, #444, #666);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 26px;
+            border: 2px solid #555;
+            box-shadow: 
+                inset 0 2px 6px rgba(0,0,0,0.3),
+                0 2px 4px rgba(0,0,0,0.2);
         }
+
         .toggle-slider:before {
             position: absolute;
             content: "";
-            height: 16px;
-            width: 16px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: .4s;
+            height: 18px;
+            width: 18px;
+            left: 2px;
+            bottom: 2px;
+            background: linear-gradient(135deg, #f0f0f0, #d0d0d0);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             border-radius: 50%;
+            box-shadow: 
+                0 2px 6px rgba(0,0,0,0.4),
+                inset 0 1px 2px rgba(255,255,255,0.3);
         }
+
+        /* Enhanced ON state */
         input:checked + .toggle-slider {
-            background-color: #08d9d6;
+            background: linear-gradient(135deg, #08d9d6, #20e0dd);
+            border-color: #08d9d6;
+            box-shadow: 
+                inset 0 2px 6px rgba(0,0,0,0.2),
+                0 2px 4px rgba(8, 217, 214, 0.3),
+                0 0 12px rgba(8, 217, 214, 0.2);
         }
+
         input:checked + .toggle-slider:before {
-            transform: translateX(18px);
+            transform: translateX(24px);
+            background: linear-gradient(135deg, #ffffff, #f0f0f0);
+            box-shadow: 
+                0 2px 8px rgba(0,0,0,0.3),
+                inset 0 1px 2px rgba(255,255,255,0.4),
+                0 0 6px rgba(8, 217, 214, 0.4);
+        }
+
+        /* Add glow effect on hover */
+        .toggle-switch:hover .toggle-slider {
+            box-shadow: 
+                inset 0 2px 6px rgba(0,0,0,0.3),
+                0 2px 4px rgba(0,0,0,0.2),
+                0 0 8px rgba(255,255,255,0.1);
+        }
+
+        input:checked + .toggle-slider:hover {
+            box-shadow: 
+                inset 0 2px 6px rgba(0,0,0,0.2),
+                0 2px 4px rgba(8, 217, 214, 0.4),
+                0 0 16px rgba(8, 217, 214, 0.3);
         }
         
         /* --- Info Modal Prettification --- */
@@ -639,7 +680,6 @@
             }
         }
 
-
         @keyframes spin-effect {
             from { transform: translate(-50%, -50%) rotate(0deg); }
             to { transform: translate(-50%, -50%) rotate(360deg); }
@@ -760,31 +800,44 @@
             transform: translateY(150%);
         }
         
+        /* FIXED: Enhanced smoke particle styling with proper z-index */
         .smoke-particle {
             position: absolute;
             top: 50%;
             left: 50%;
             width: 50px;
             height: 50px;
-            background: radial-gradient(circle, rgba(200,200,200,0.3) 0%, rgba(200,200,200,0) 70%);
+            background: radial-gradient(circle, rgba(200,200,200,0.4) 0%, rgba(200,200,200,0) 70%);
             border-radius: 50%;
             pointer-events: none;
             animation: smoke-drift-fade var(--duration) ease-out forwards;
+            /* FIXED: Ensure smoke renders above holster */
+            z-index: 106; 
         }
 
+        /* FIXED: Enhanced smoke drift animation */
         @keyframes smoke-drift-fade {
             0% {
                 opacity: 0;
                 transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-185px) translateX(0) scale(0.3);
             }
-            20% {
-                opacity: 0.7;
-                transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-200px) translateX(0) scale(0.8);
+            15% {
+                opacity: 0.8;
+                transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-195px) translateX(0) scale(0.6);
+            }
+            30% {
+                opacity: 0.9;
+                transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-205px) translateX(var(--drift-x, 0px)) scale(0.9);
             }
             100% {
                 opacity: 0;
-                transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-240px) translateX(var(--drift-x)) translateY(var(--drift-y)) scale(var(--scale-end));
+                transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-250px) translateX(var(--drift-x)) translateY(var(--drift-y)) scale(var(--scale-end));
             }
+        }
+
+        /* FIXED: Ensure RevolverFrame has lower z-index than smoke */
+        .chamber-container svg {
+            z-index: 1; /* Lower than smoke particles */
         }
     </style>
 <script type="importmap">
@@ -818,7 +871,6 @@
     <audio id="audio-spin-loop" src="https://cdn.pixabay.com/download/audio/2021/08/09/audio_3419992d7b.mp3"></audio>
     <audio id="audio-spin-end" src="https://cdn.pixabay.com/download/audio/2022/03/24/audio_c337452d2b.mp3"></audio>
     <audio id="audio-dry-fire" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_73062b1154.mp3"></audio>
-
 
     <script type="module" src="/index.tsx"></script>
 </body>
