@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spin of Sin: AI Rebirth</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --ticker-color: #ff2e63;
+        }
+
+        body {
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: radial-gradient(ellipse at center, #1a1a1a 0%, #0a0a0a 80%);
+            color: #f0f0f0;
+        }
+        
+        body.dragging-bullet *, body.dragging-palette * {
+            cursor: grabbing !important;
+        }
+
+        /* --- Custom Bullet Styles --- */
+        .bullet-body-colored {
+            width: 100%;
+            height: 65%;
+            border-radius: 0 0 8px 8px; /* More cylindrical */
+            position: absolute;
+            bottom: 0;
+            background: linear-gradient(to bottom, 
+                color-mix(in srgb, var(--color), white 40%), 
+                var(--color));
+            box-shadow: 
+                inset -3px -3px 6px rgba(0, 0, 0, 0.5),
+                inset 2px 2px 4px rgba(255, 255, 255, 0.4),
+                0 0 15px color-mix(in srgb, var(--color), transparent 50%);
+        }
+
+        .bullet-tip-metallic {
+            width: 70%;
+            height: 35%;
+            border-radius: 50% 50% 10% 10% / 100% 100% 0 0; /* More pointed tip */
+            position: absolute;
+            top: 0;
+            left: 15%;
+            background: linear-gradient(to bottom, #f0f0f0, #c0c0c0, #a0a0a0);
+            box-shadow: 
+                inset -2px -2px 4px rgba(0, 0, 0, 0.4),
+                inset 1px 1px 2px rgba(255, 255, 255, 0.6);
+        }
+        
+        .dud-bullet-body {
+            position: absolute;
+            width: 100%;
+            height: 90%;
+            bottom: 0;
+            background: linear-gradient(135deg, #8b5e3c, #6a4c2f, #4b3822);
+            border-radius: 12px 12px 6px 6px;
+            box-shadow: inset -2px -2px 5px rgba(0,0,0,0.6), inset 2px 2px 4px rgba(255,255,255,0.2);
+        }
+        .dud-bullet-tip {
+            position: absolute;
+            top: 0;
+            left: 20%;
+            width: 60%;
+            height: 20%;
+            background: linear-gradient(to bottom, #7a5230, #5a3c22);
+            border-radius: 50% / 100% 100% 0 0;
+        }
+
+        .bullet-rim {
+            width: 90%;
+            height: 8px;
+            background: linear-gradient(to right, #666, #999, #666);
+            position: absolute;
+            bottom: 25%;
+            left: 5%;
+            border-radius: 2px;
+            box-shadow: 
+                inset 0 1px 2px rgba(0, 0, 0, 0.5),
+                0 1px 1px rgba(255, 255, 255, 0.2);
+        }
+        
+        .bullet-pickup-animation {
+            animation: pickupEffect 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* --- Enhanced Chamber Styles --- */
+        .top-slot-indicator {
+            position: absolute;
+            left: 50%;
+            top: -40px;
+            width: 0;
+            height: 70px;
+            transform: translateX(-50%);
+            z-index: 20;
+            pointer-events: none;
+        }
+        .top-slot-indicator::before {
+            content: '';
+            display: block;
+            position: absolute;
+            left: -5px;
+            top: 0;
+            width: 10px;
+            height: 40px;
+            background: linear-gradient(to top, var(--ticker-color, #ff2e63) 80%, transparent 100%);
+            border-radius: 16px 16px 6px 6px;
+            box-shadow: 0 0 18px 3px var(--ticker-color, #ff2e63), 0 0 6px #fff;
+            animation: indicatorPulse 1.5s infinite alternate;
+            transition: background 0.3s, box-shadow 0.3s;
+        }
+        .top-slot-indicator.stopped::before {
+            animation: none;
+            background: linear-gradient(to top, #666 80%, transparent 100%);
+            box-shadow: 0 0 6px 1px #555;
+        }
+        .top-slot-indicator.glowing::before {
+             animation: indicatorPulse 0.2s, glow-once 0.25s !important;
+        }
+
+        .chamber-container {
+            position: relative;
+            width: 350px;
+            height: 350px;
+            cursor: grab;
+            filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.6));
+        }
+
+        .chamber-container:active { cursor: grabbing; }
+
+        .chamber {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform-style: preserve-3d;
+            transition: transform 0.1s linear;
+            transform-origin: center center;
+        }
+
+        .chamber.stopping {
+             transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .chamber.spinning .chamber-visuals {
+             filter: blur(1px);
+             animation: subtleWobble 0.3s linear infinite;
+        }
+
+        .chamber-base {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: 
+                /* Highlights */
+                radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.08) 0%, transparent 25%),
+                radial-gradient(circle at 70% 80%, rgba(255, 255, 255, 0.05) 0%, transparent 20%),
+                /* Base Metal */
+                radial-gradient(circle at center, #2a2a2a 0%, #1a1a1a 60%, #0a0a0a 100%);
+            box-shadow: 
+                inset 0 0 60px rgba(0, 0, 0, 0.9),
+                inset -8px -8px 25px rgba(0, 0, 0, 0.6),
+                inset 8px 8px 25px rgba(255, 255, 255, 0.05),
+                0 0 40px rgba(0, 0, 0, 0.5);
+            border: 3px solid #333;
+            transition: background 0.5s ease;
+        }
+        
+        /* --- Chamber Overheat Effect --- */
+        .chamber-base::before {
+            content: '';
+            position: absolute;
+            inset: 3px; /* Inside border */
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 80, 40, 0.85) 20%, rgba(220, 30, 0, 0.6) 55%, transparent 70%);
+            opacity: var(--chamber-heat, 0);
+            transition: opacity 0.5s ease-out;
+            z-index: 1;
+            pointer-events: none;
+            mix-blend-mode: color-dodge;
+        }
+
+        /* --- Chamber Style Presets --- */
+        .chamber-style-blued .chamber-base {
+            background: 
+                radial-gradient(circle at 30% 30%, rgba(173, 216, 230, 0.1) 0%, transparent 25%),
+                radial-gradient(circle at 70% 80%, rgba(173, 216, 230, 0.07) 0%, transparent 20%),
+                radial-gradient(circle at center, #2c3e50 0%, #1a242f 60%, #0a0a0a 100%);
+        }
+        .chamber-style-gilded .chamber-center {
+            background: radial-gradient(circle at 40% 40%, #D4AF37 0%, #B8860B 100%);
+        }
+        .chamber-style-gilded .chamber-center::before {
+            background: radial-gradient(circle at 40% 40%, #8A650D 0%, #4B3606 100%);
+        }
+        .chamber-style-gilded .chamber-slot::after {
+            border-color: rgba(255, 215, 0, 0.2);
+            box-shadow: 0 0 5px rgba(255, 215, 0, 0.2);
+        }
+        .chamber-style-engraved .chamber-base {
+            background-image: 
+                repeating-linear-gradient(45deg, rgba(255,255,255,0.02) 0, rgba(255,255,255,0.02) 2px, transparent 2px, transparent 10px),
+                radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.08) 0%, transparent 25%),
+                radial-gradient(circle at 70% 80%, rgba(255, 255, 255, 0.05) 0%, transparent 20%),
+                radial-gradient(circle at center, #2a2a2a 0%, #1a1a1a 60%, #0a0a0a 100%);
+        }
+
+
+        .chamber-center {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle at 40% 40%, #555 0%, #222 100%);
+            box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.9), 0 3px 6px rgba(0, 0, 0, 0.6);
+            cursor: pointer;
+            z-index: 10;
+            transition: background 0.5s ease;
+        }
+
+        .chamber-center::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60%;
+            height: 60%;
+            border-radius: 50%;
+            background: radial-gradient(circle at 40% 40%, #333 0%, #111 100%);
+            box-shadow: inset 0 3px 8px rgba(0,0,0,0.8);
+            transition: background 0.5s ease;
+        }
+
+        .chamber.spinning .chamber-center::before {
+            animation: spin-effect 0.5s linear infinite;
+        }
+
+        .chamber-slot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 92px;
+            height: 92px;
+            margin: -46px 0 0 -46px; /* Center the element's origin */
+            border-radius: 50%;
+            
+            /* CSS variables set from React for positioning and rotation */
+            --angle: calc(var(--slot-index) * 60deg);
+            transform: 
+                rotate(var(--angle)) 
+                translateY(-115px);
+
+            background: radial-gradient(circle at center, #0a0a0a 0%, #000 100%);
+            box-shadow: 
+                inset 0 5px 20px rgba(0, 0, 0, 1),
+                inset 0 -1px 3px rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+        
+        .chamber-slot-number {
+            transform: rotate(calc(var(--rotation) - var(--angle)));
+            transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        
+        .chamber-slot::before { /* Inner bevel for depth */
+            content: '';
+            position: absolute;
+            top: 4px; left: 4px; right: 4px; bottom: 4px;
+            border-radius: 50%;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.8);
+            pointer-events: none;
+        }
+        
+        .chamber-slot::after { /* Metallic rim */
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 3px rgba(255,255,255,0.1);
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+        
+        .chamber-slot.drag-over {
+            background: radial-gradient(circle at center, #222 0%, #111 100%);
+        }
+
+        .chamber-slot.drag-over::after {
+            animation: pulse-glow-rim 1s infinite alternate;
+        }
+
+        .chamber-slot.invalid-drop {
+            animation: invalid-drop-shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        .chamber-bullet {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #222;
+            opacity: 0;
+            transform: scale(0);
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+            overflow: visible;
+            box-shadow: none;
+            cursor: pointer;
+        }
+        
+        .chamber-bullet.loading {
+            transition: none;
+            animation: loadInEffect 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        
+        .chamber-bullet.ejecting {
+            animation: ejectEffect 0.6s ease-in forwards;
+        }
+
+        /* CASING (now colored) */
+        .chamber-bullet.loaded {
+            opacity: 1;
+            transform: scale(1.25); /* NEW: Scaled up */
+            background: radial-gradient(circle at 40% 40%, color-mix(in srgb, var(--color, #888), white 40%) 0%, var(--color, #555) 80%);
+            box-shadow: 
+                inset 0 3px 6px rgba(0, 0, 0, 0.6),
+                inset 0 -2px 3px rgba(255, 255, 255, 0.15);
+            animation: body-pulse 2.5s infinite;
+        }
+        
+        .chamber-bullet.loaded.active {
+             animation: body-pulse-active 1.5s infinite;
+        }
+
+        .chamber-bullet.loaded.dud-casing {
+             background: radial-gradient(circle at 40% 40%, #8b5e3c 0%, #6a4c2f 60%, #4b3822 100%); /* Dud Brown */
+             animation: none;
+        }
+        
+        /* PRIMER (now metallic) */
+        .chamber-bullet.loaded::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 40% 40%, #d4af37 0%, #b8860b 60%, #5c400a 100%); /* Brass */
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.7);
+            transition: all 0.3s ease;
+        }
+
+        .chamber-bullet.revealed {
+            background: radial-gradient(circle at 40% 40%, color-mix(in srgb, var(--color, #888), white 40%) 0%, var(--color, #555) 80%);
+            box-shadow: 
+                0 0 30px var(--color),
+                0 0 60px color-mix(in srgb, var(--color), transparent 50%),
+                inset 0 2px 4px rgba(255, 255, 255, 0.3);
+            animation: revealPulse 0.6s ease-out;
+        }
+        
+        .chamber-bullet.revealed::after {
+             background: 
+                radial-gradient(circle at 40% 40%, 
+                    #fff 0%, 
+                    color-mix(in srgb, var(--color), white 30%) 50%,
+                    var(--color) 100%);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), 0 0 10px var(--color);
+        }
+        
+        .chamber-bullet.spent {
+            background: radial-gradient(circle at center, #3a3a3a 0%, #1a1a1a 100%);
+            opacity: 0.8;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8);
+            animation: none;
+        }
+
+        .chamber-bullet.spent::after {
+            background: #222;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,1);
+        }
+        
+        .chamber-bullet.spent.dud-casing {
+             background: radial-gradient(circle at 40% 40%, #684a33 0%, #4a3420 100%);
+             opacity: 0.9;
+             transform: translateY(-12px) rotate(-15deg) scale(1.25);
+             transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        /* BULLET HIDING */
+        .chamber-bullet-cover {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: radial-gradient(circle at 40% 40%, #888 0%, #444 60%, #222 100%);
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.7), inset 0 -1px 2px rgba(255,255,255,0.1);
+            opacity: 0;
+            transform: scale(0.8);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            pointer-events: none;
+        }
+
+        .chamber-bullet.is-hidden .chamber-bullet-cover {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .chamber-bullet.is-hidden {
+             animation: none !important;
+        }
+        .chamber-bullet.is-hidden::after {
+            /* Hide primer glow when hidden */
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.7);
+        }
+        
+        /* --- Custom Color Swatch --- */
+        input[type="color"] {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-color: transparent;
+            width: 40px;
+            height: 40px;
+            border: none;
+            cursor: pointer;
+        }
+        input[type="color"]::-webkit-color-swatch {
+            border-radius: 50%;
+            border: 2px solid #555;
+        }
+        input[type="color"]::-moz-color-swatch {
+            border-radius: 50%;
+            border: 2px solid #555;
+        }
+
+        /* --- Toggle Switch --- */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 22px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #333;
+            transition: .4s;
+            border-radius: 22px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: #08d9d6;
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(18px);
+        }
+        
+        /* --- Info Modal Prettification --- */
+        .info-modal-content h3 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.25rem;
+            color: #08d9d6;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            border-bottom: 1px solid rgba(8, 217, 214, 0.3);
+            padding-bottom: 0.5rem;
+        }
+        .info-modal-content ul {
+            list-style: none;
+            padding-left: 0.5rem;
+        }
+        .info-modal-content li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+            line-height: 1.6;
+        }
+        .info-modal-content li::before {
+            content: '›';
+            font-weight: bold;
+            color: #08d9d6;
+            font-size: 1.5rem;
+            line-height: 1.3;
+        }
+        .info-modal-content kbd {
+            font-family: 'Roboto Mono', monospace;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-bottom-width: 2px;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.8em;
+            color: #f0f0f0;
+            display: inline-block;
+            vertical-align: middle;
+            position: relative;
+            top: -1px;
+        }
+
+        /* --- Keyframe Animations --- */
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotateZ(-2deg); }
+            50% { transform: translateY(-15px) rotateZ(2deg); }
+        }
+        .animate-float {
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes subtleWobble {
+            0% { transform: translate(0.5px, -0.5px) rotate(0.1deg); }
+            25% { transform: translate(-0.5px, -0.5px) rotate(-0.1deg); }
+            50% { transform: translate(-0.5px, 0.5px) rotate(0.1deg); }
+            75% { transform: translate(0.5px, 0.5px) rotate(-0.1deg); }
+            100% { transform: translate(0.5px, -0.5px) rotate(0.1deg); }
+        }
+
+        @keyframes pickupEffect {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3) rotate(8deg); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes loadInEffect {
+            0% { transform: scale(0.3) translateY(0); opacity: 0; }
+            60% { transform: scale(1.4) translateY(0); opacity: 1; }
+            80% { transform: scale(1.2) translateY(0); }
+            100% { transform: scale(1.25) translateY(0); opacity: 1; }
+        }
+
+        @keyframes ejectEffect {
+            from { transform: scale(1.25); opacity: 1; }
+            to { transform: scale(0); opacity: 0; }
+        }
+        
+        @keyframes casing-eject-left {
+            0% { transform: translate(-50%, 0) rotate(0) scale(1); opacity: 1; }
+            20% { transform: translate(-100px, -80px) rotate(-90deg) scale(1.1); }
+            100% { transform: translate(-180px, 150px) rotate(-360deg) scale(0.5); opacity: 0; }
+        }
+        @keyframes casing-eject-right {
+            0% { transform: translate(-50%, 0) rotate(0) scale(1); opacity: 1; }
+            20% { transform: translate(100px, -80px) rotate(90deg) scale(1.1); }
+            100% { transform: translate(180px, 150px) rotate(360deg) scale(0.5); opacity: 0; }
+        }
+        .casing-eject-left { animation: casing-eject-left 1s cubic-bezier(0.3, 0, 0.8, 0.5) forwards; }
+        .casing-eject-right { animation: casing-eject-right 1s cubic-bezier(0.3, 0, 0.8, 0.5) forwards; }
+
+        @keyframes rainbowMove {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .animate-rainbow-move {
+            background-size: 300% 300%;
+            animation: rainbowMove 6s ease-in-out infinite;
+        }
+        
+        @keyframes indicatorPulse {
+            0% { box-shadow: 0 0 12px 2px var(--ticker-color, #ff2e63), 0 0 2px #fff; }
+            100% { box-shadow: 0 0 24px 6px var(--ticker-color, #ff2e63), 0 0 8px #fff; }
+        }
+
+        @keyframes glow-once {
+            50% { box-shadow: 0 0 40px 10px var(--ticker-color, #ff2e63), 0 0 12px #fff; }
+        }
+        
+        @keyframes invalid-drop-shake {
+            10%, 90% { transform: rotate(var(--angle)) translateY(-115px) translateX(-4px); }
+            20%, 80% { transform: rotate(var(--angle)) translateY(-115px) translateX(4px); }
+            30%, 50%, 70% { transform: rotate(var(--angle)) translateY(-115px) translateX(-4px); }
+            40%, 60% { transform: rotate(var(--angle)) translateY(-115px) translateX(4px); }
+        }
+
+        @keyframes revealPulse {
+            0% { transform: scale(1.25); }
+            50% { transform: scale(1.5); }
+            100% { transform: scale(1.25); }
+        }
+        
+        @keyframes pulse-glow-rim {
+            from {
+                border-color: color-mix(in srgb, var(--bullet-glow, #fff), transparent 30%);
+                box-shadow: 0 0 8px color-mix(in srgb, var(--bullet-glow, #fff), transparent 50%);
+            }
+            to {
+                border-color: var(--bullet-glow, #fff);
+                box-shadow: 0 0 25px var(--bullet-glow, #fff), inset 0 0 12px color-mix(in srgb, var(--bullet-glow, #fff), black 60%);
+            }
+        }
+        
+        @keyframes body-pulse {
+            0%, 100% { box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.6), inset 0 -2px 3px rgba(255, 255, 255, 0.15), 0 0 4px color-mix(in srgb, var(--color), transparent 80%); }
+            50% { box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.6), inset 0 -2px 3px rgba(255, 255, 255, 0.15), 0 0 10px color-mix(in srgb, var(--color), transparent 50%); }
+        }
+        
+        @keyframes body-pulse-active {
+            0%, 100% { 
+                box-shadow: inset 0 3px 6px rgba(0,0,0,0.6), inset 0 -2px 3px rgba(255,255,255,0.15), 0 0 12px var(--color), 0 0 24px color-mix(in srgb, var(--color), transparent 50%); 
+                transform: scale(1.25);
+            }
+            50% { 
+                box-shadow: inset 0 3px 6px rgba(0,0,0,0.6), inset 0 -2px 3px rgba(255,255,255,0.15), 0 0 30px var(--color), 0 0 50px color-mix(in srgb, var(--color), transparent 50%); 
+                transform: scale(1.3);
+            }
+        }
+
+
+        @keyframes spin-effect {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        @keyframes errorPopup {
+            0% { opacity: 0; transform: translateY(-20px) scale(0.9); }
+            10% { opacity: 1; transform: translateY(0) scale(1); }
+            90% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-20px) scale(0.9); }
+        }
+        .animate-error-popup {
+             animation: errorPopup 3s ease-out forwards;
+        }
+
+        @keyframes muzzleFlashBurst {
+            0% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 0 120px 60px #fff, 0 0 200px 120px #ffae3dcc; }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); box-shadow: 0 0 40px 20px #fff, 0 0 80px 40px #ff2e63cc; }
+        }
+        .animate-muzzle-flash {
+            animation: muzzleFlashBurst 0.2s cubic-bezier(0.7,0,0.5,1);
+        }
+
+        @keyframes shockwaveExpand {
+            0% { opacity: 0.8; transform: translate(-50%, -50%) scale(0.2); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+        }
+        .animate-shockwave {
+            animation: shockwaveExpand 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        
+        @keyframes explosionParticleMove {
+            0% { opacity: 1; transform: scale(1) translate(0,0); }
+            100% { opacity: 0; transform: scale(0.5) translate(var(--ex, 0px), var(--ey, 0px)); }
+        }
+        .animate-explosion-particle {
+             animation: explosionParticleMove 0.8s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+        }
+        
+        @keyframes smokePuff {
+            0% { opacity: 0.6; transform: scale(0.5) translate(0, 0); }
+            100% { opacity: 0; transform: scale(1.5) translate(var(--ex, 0px), var(--ey, 0px)); }
+        }
+        .animate-smoke-particle {
+            animation: smokePuff 1.5s ease-out forwards;
+        }
+
+        .chamber-smoke-puff {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 30px;
+            height: 30px;
+            background: rgba(128, 128, 128, 0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 100;
+            animation: smokePuff 0.8s ease-out forwards;
+        }
+        
+        .drag-trail-particle {
+            position: fixed;
+            pointer-events: none;
+            border-radius: 50%;
+            z-index: 99999;
+            animation: trail-fade-out 0.5s ease-out forwards;
+        }
+        @keyframes trail-fade-out {
+            from { opacity: 0.7; transform: scale(1); }
+            to { opacity: 0; transform: scale(0); }
+        }
+
+        @keyframes chamberShake {
+            0%, 100% { transform: translate(0,0) rotate(0); }
+            10% { transform: translate(-12px, 5px) rotate(-2.5deg); }
+            30% { transform: translate(10px, -3px) rotate(1.5deg); }
+            50% { transform: translate(-8px, 5px) rotate(-1.5deg); }
+            70% { transform: translate(6px, -5px) rotate(1deg); }
+            90% { transform: translate(-2px, 2px) rotate(-0.5deg); }
+        }
+        .animate-chamber-shake {
+            animation: chamberShake 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in {
+             animation: fadeIn 1s ease-out 2s forwards;
+        }
+
+        @keyframes resultFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .animate-result-fade-in {
+            animation: resultFadeIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+
+        @keyframes resultFadeOut {
+            from { opacity: 1; transform: scale(1); }
+            to { opacity: 0; transform: scale(0.95); }
+        }
+        .animate-result-fade-out {
+            animation: resultFadeOut 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+
+        .signature-glow {
+            animation: signatureGlow 1.23s ease-in-out;
+        }
+        @keyframes signatureGlow {
+            0%, 100% { filter: drop-shadow(0 0 5px #ffd700); opacity: 0.8; }
+            50% { filter: drop-shadow(0 0 25px #ffd700) drop-shadow(0 0 10px #fff); opacity: 1; }
+        }
+
+        .controls-container {
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .controls-container.hidden {
+            transform: translateY(150%);
+        }
+        
+        .smoke-particle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            background: radial-gradient(circle, rgba(200,200,200,0.3) 0%, rgba(200,200,200,0) 70%);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: smoke-drift-fade var(--duration) ease-out forwards;
+        }
+
+        @keyframes smoke-drift-fade {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-185px) translateX(0) scale(0.3);
+            }
+            20% {
+                opacity: 0.7;
+                transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-200px) translateX(0) scale(0.8);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-240px) translateX(var(--drift-x)) translateY(var(--drift-y)) scale(var(--scale-end));
+            }
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.15.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-[#0a0a0a] overflow-hidden w-screen h-screen flex flex-col items-center justify-center select-none">
+    <div id="root"></div>
+    
+    <a href="https://deffy.me" target="_blank" rel="noopener noreferrer">
+        <img id="signature" src="https://deffy.me/imgs/deffy-sig.png" alt="Deffy" class="absolute bottom-4 right-4 w-24 h-auto opacity-80 transition-all hover:opacity-100" />
+    </a>
+
+    <!-- Audio elements -->
+    <audio id="audio-load" src="https://cdn.pixabay.com/download/audio/2022/04/14/audio_a738a1a367.mp3"></audio>
+    <audio id="audio-click" src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_524c13a893.mp3"></audio>
+    <audio id="audio-fire" src="https://cdn.pixabay.com/download/audio/2024/03/17/audio_4a682ed23a.mp3"></audio>
+    <audio id="audio-reset" src="https://cdn.pixabay.com/download/audio/2022/10/10/audio_2452093d5c.mp3"></audio>
+    <audio id="audio-error" src="https://cdn.pixabay.com/download/audio/2022/03/10/audio_8a17de6806.mp3"></audio>
+    <audio id="audio-pickup" src="https://cdn.pixabay.com/download/audio/2022/03/07/audio_d14e96f131.mp3"></audio>
+    <audio id="audio-thunk" src="https://cdn.pixabay.com/download/audio/2022/03/10/audio_e40026e2e2.mp3"></audio>
+    <audio id="audio-spin-start" src="https://cdn.pixabay.com/download/audio/2023/09/26/audio_2f22312d4d.mp3"></audio>
+    <audio id="audio-spin-loop" src="https://cdn.pixabay.com/download/audio/2021/08/09/audio_3419992d7b.mp3"></audio>
+    <audio id="audio-spin-end" src="https://cdn.pixabay.com/download/audio/2022/03/24/audio_c337452d2b.mp3"></audio>
+    <audio id="audio-dry-fire" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_73062b1154.mp3"></audio>
+
+
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>
